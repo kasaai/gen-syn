@@ -163,7 +163,7 @@ similar instances without diversity.
 
 ## Modifications for Insurance Datasets
 
-We make one key modification to the CTGAN implemention to accommodate our domain
+We make one key modification to the CTGAN implementation to accommodate our domain
 specific datasets. During sampling of categories, we use the true data frequency
 rather than the log-frequency. We find that using log-frequency causes the 
 synthesizer to unrealistically oversample rare categories.
