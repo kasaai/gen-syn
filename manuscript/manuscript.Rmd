@@ -395,7 +395,7 @@ results_table %>%
 # Workflow and Privacy {#workflow}
 
 To encourage usage, we implement an R interface to the original Python implementation
-in the form of an open source package, **ctgan**.[^2]] We envisage this package to appeal to a 
+in the form of an open source package, **ctgan**.[^2] We envisage this package to appeal to a 
 variety of personas in the field. As examples, companies who are looking to crowd-source
 insights into their data gain an option for data disclosure, and researchers working
 with confidential data can release reproducible workflows along with a sample dataset. 
