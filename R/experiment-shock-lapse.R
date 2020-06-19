@@ -3,9 +3,10 @@ library(ctgan)
 library(tidyverse)
 library(rsample)
 
+source("R/util.R")
+
 # download data if needed
 lapse_study <- cellar_pull("lapse_study")
-glimpse(lapse_study)
 
 issue_age_mapping <- tribble(
   ~ age_band, ~ avg_issue_age,
@@ -90,10 +91,10 @@ modeling_data <- lapse_study %>%
   select(lapse_count, risk_class_mapped, face_amount, premium_mode_mapped,
          avg_issue_age, avg_premium_jump_ratio, duration, exposure_count)
 
-create_glm <- function(training_data) {
+training_fn <- function(training_data) {
   f <- lapse_count ~
     risk_class_mapped + face_amount +
-    avg_issue_age + avg_premium_jump_ratio + duration
+    avg_issue_age + avg_premium_jump_ratio + duration -1
   
   glm(f, family = poisson(), data = training_data, offset = log(exposure_count))
 }
@@ -102,17 +103,14 @@ compute_rmse <- function(preds, actuals) {
   sqrt(sum((preds - actuals)^2) / length(preds))
 }
 
-analyze_synthesis <- function(split) {
-  train <- analysis(split)
-  test <- assessment(split)
-  synthesizer <- ctgan()
-  train_syn <- train %>% 
-    mutate(lapse_rate = lapse_count / exposure_count) %>%
+pre_process <- function(x) {
+  x %>% 
+    mutate(lapse_rate = lapse_count / exposure_count) %>% 
     select(-lapse_count)
-  synthesizer %>% 
-    fit(train_syn,batch_size = 500, epochs = 300)
-  syn <- synthesizer %>% 
-    ctgan_sample(n = nrow(train), batch_size = 10000) %>% 
+}
+
+post_process <- function(x) {
+  x %>% 
     mutate(exposure_count = exposure_count %>% 
              as.integer() %>% 
              pmax(1),
@@ -120,23 +118,14 @@ analyze_synthesis <- function(split) {
            lapse_count = as.integer(exposure_count * lapse_rate )
     ) %>% 
     select(-lapse_rate)
-  
-  glm_syn <- create_glm(syn)
-  glm_train <- create_glm(train)
-  
-  preds_syn <- predict(glm_syn, test, type = "response")
-  preds_train <- predict(glm_train, test, type = "response")
-  actual_response <- test$lapse_count
-  
-  rmse_syn <- compute_rmse(preds_syn, actual_response)
-  rmse_train <- compute_rmse(preds_train, actual_response)
-  
-  list(rmse_syn = rmse_syn, rmse_train = rmse_train)
 }
 
-folds <- rsample::vfold_cv(modeling_data, v = 10)
-result <- map(folds$splits, analyze_synthesis)
-rmses <- result %>% transpose() %>% map(flatten_dbl)
-rmses
-
-# saveRDS(rmses, "shock_lapse.rds")
+result <- run_cv(
+  data = modeling_data,
+  batch_size = 500,
+  training_fn = training_fn,
+  pre_process_fn = pre_process,
+  post_process_fn = post_process,
+  epochs = 300,
+  n_folds = 10
+)
