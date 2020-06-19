@@ -3,6 +3,8 @@ library(ctgan)
 library(tidyverse)
 library(rsample)
 
+source("R/util.R")
+
 # download data if needed
 policies <- cellar_pull("fr_tpl2_policies")
 
@@ -30,10 +32,10 @@ modeling_data <- policies %>%
   ) %>% 
   select(-policy_id)
 
-create_glm <- function(training_data) {
+training_fn <- function(training_data) {
   f <- num_claims ~ vehicle_power + vehicle_age + driver_age +
     bonus_malus + vehicle_brand + vehicle_gas + density +
-    region + area
+    region + area - 1
   glm(f, family = poisson(), data = training_data, offset = log(exposure))
 }
 
@@ -41,36 +43,26 @@ compute_rmse <- function(preds, actuals) {
   sqrt(sum((preds - actuals)^2) / length(preds))
 }
 
-analyze_synthesis <- function(split) {
-  train <- analysis(split)
-  test <- assessment(split)
-  synthesizer <- ctgan()
-  train_syn <- train %>% 
+pre_process <- function(x) {
+  x %>% 
     sample_n(100000) %>% 
     mutate_at("num_claims", as.character)
-  synthesizer %>% 
-    fit(train_syn,batch_size = 10000, epochs = 300)
-  syn <- synthesizer %>% 
-    ctgan_sample(n = nrow(train), batch_size = 10000) %>% 
-    mutate(num_claims = as.integer(num_claims),
-           exposure = pmin(pmax(1/365, exposure), 1))
-  
-  glm_syn <- create_glm(syn)
-  glm_train <- create_glm(train)
-  
-  preds_syn <- predict(glm_syn, test, type = "response")
-  preds_train <- predict(glm_train, test, type = "response")
-  actual_response <- test$num_claims
-  
-  rmse_syn <- compute_rmse(preds_syn, actual_response)
-  rmse_train <- compute_rmse(preds_train, actual_response)
-  
-  list(rmse_syn = rmse_syn, rmse_train = rmse_train)
 }
 
-folds <- rsample::vfold_cv(modeling_data, v = 10)
-result <- map(folds$splits, analyze_synthesis)
-rmses <- result %>% transpose() %>% map(flatten_dbl)
-rmses
+post_process <- function(x) {
+  x %>% 
+    mutate(
+      num_claims = as.integer(num_claims),
+      exposure = pmin(pmax(1 / 365, exposure), 1)
+    )
+}
 
-# saveRDS(rmses, "tpl.rds")
+result <- run_cv(
+  data = modeling_data,
+  batch_size = 50000,
+  training_fn = training_fn,
+  pre_process_fn = pre_process,
+  post_process_fn = post_process,
+  epochs = 100,
+  n_folds = 10
+)
