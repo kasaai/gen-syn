@@ -8,11 +8,12 @@ abstract: |
   One of the impediments in advancing actuarial research and developing open 
   source assets for insurance analytics is the lack of realistic publicly
   available datasets. In this work, we develop a workflow for synthesizing
-  insurance datasets leveraging current neural network techniques. We 
-  evaluate the predictive modeling efficacy of datasets synthesized from
+  insurance datasets leveraging CTGAN, a recently proposed neural network
+  architecture for generating tabular data. Applying the proposed workflow to
   publicly available data in the domains of general insurance pricing and life
-  insurance shock lapse modeling. The trained synthesizers are able to capture
-  representative characteristics of the real datasets. This workflow is 
+  insurance shock lapse modeling, we evaluate the synthesized datasets from a
+  few perspectives: machine learning efficacy, distributions of variables, and
+  stability of model parameters. This workflow is 
   implemented via an R interface to promote adoption by researchers and data
   owners.
 keywords:
@@ -88,7 +89,7 @@ workflow and data privacy considerations, and Section \ref{conclusion} concludes
 Our workflow is based on the CTGAN architecture with some modifications. As of 
 the writing of this paper, CTGAN represents the 
 state-of-the-art for synthesizing tabular data [@xuModelingTabular2019].
-In this section, we provide a brief overview of GANs, the extensions of GAN that
+In this section, we provide a cursory overview of GANs, the extensions of GAN that
 CTGAN proposes in order to train
 quality generative models for tabular data, and modifications we introduce to
 adopt the architecture for insurance datasets. We remark that neural network rudiments 
@@ -127,7 +128,8 @@ instances from the real data samples, while the generator $G$ maximize the score
 given by the critic to the samples it generates. In practice, we alternately optimize
 the two networks, fixing one while training the other. Once the generator and 
 critic networks have been trained, one can input samples of
-$Z$ into the generator $G$ to obtain synthesized instances.
+$Z$ into the generator $G$ to obtain synthesized instances. For more details on GAN,
+we refer the user to @NIPS2014_5423.
 
 ## CTGAN
 
@@ -342,12 +344,22 @@ is used in the offset. RMSE is used as the performance metric.
 
 ## Results & Discussion
 
+In this section, we present and discuss the results of our experiments. The main findings are 
+as follows:
+
+1. In terms of cross-validation performance, the models trained using the synthetic
+datasets perform similarly to those trained using the real datasets;
+2. The distribution of variables, both continuous and categorical, in the synthetic
+datasets are consistent with those in the real datasets; however,
+3. The relativities of GLM models built on the synthetic datasets *do not* exhibit
+similar patterns to those of models built on real datasets.
+
 In Figure \ref{fig:metrics} and Table \ref{tab:metrics-table}, we exhibit the cross-validation performance of models built on 
 synthetic and real data for the two case studies. We see that the models trained
 using the synthetic datasets perform similarly to those trained using the real
 datasets.
 
-```{r metrics, echo=FALSE, message=FALSE, fig.cap="Box plots of cross-validated performance of models trained on real and synthetic data for the two case studies.", fig.width=5, fig.height=3, fig.pos='H'}
+```{r metrics, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Box plots of cross-validated performance of models trained on real and synthetic data for the two case studies.", fig.width=5, fig.height=3, fig.pos='H'}
 library(tidyverse)
 tpl_rmse <- readRDS("data/tpl.rds")
 shock_lapse_rmse <- readRDS("data/shock_lapse.rds")
@@ -390,6 +402,150 @@ results_table %>%
   knitr::kable(booktabs = TRUE, digits = 4, format = "latex",
                caption = "Average cross-validated metrics of models trained on real and synthetic data.") %>% 
   kableExtra::kable_styling(latex_options = "hold_position")
+```
+
+```{r, echo=FALSE, cache=TRUE, warning=FALSE}
+combined <- read_csv("data/actual_and_synthesized_data.csv",
+                     col_types = cols(
+  num_claims = col_integer(),
+  exposure = col_double(),
+  area = col_character(),
+  vehicle_power = col_character(),
+  vehicle_age = col_character(),
+  driver_age = col_character(),
+  bonus_malus = col_double(),
+  vehicle_brand = col_character(),
+  vehicle_gas = col_character(),
+  density = col_double(),
+  region = col_character(),
+  dataset = col_character()
+))
+
+make_bar <- function(dataset, variable) {
+  dataset %>% 
+    ggplot(aes(x = !!sym(variable))) +
+    geom_bar() +
+    facet_wrap(~dataset) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+make_histogram <- function(dataset, variable, binwidth = 10) {
+  dataset %>% 
+    ggplot(aes(x = !!sym(variable))) +
+    geom_histogram(binwidth = binwidth) +
+    facet_wrap(~dataset) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+make_scatter <- function(dataset, variable) {
+  c("actual", "synthesized") %>% 
+    map_dfc(~ dataset %>% 
+              filter(dataset == .x) %>% 
+              select(!!sym(.x) := !!sym(variable))) %>% 
+    mutate_all(sort) %>% 
+    ggplot(aes(x = actual, y = synthesized)) +
+    xlab(paste0("actual ", variable)) +
+    ylab(paste0("synthesized ", variable)) +
+    geom_point() +
+    theme_bw()
+}
+
+results <- readRDS("data/result.rds")
+
+extract_relativities <- function(res) {
+  coef_glm_syn <- res %>% 
+    map_dfr("coef_glm_syn") %>% 
+    mutate(relativity = exp(estimate),
+           dataset = "synthesized")
+  coef_glm_train <- res %>% 
+    map_dfr("coef_glm_train") %>% 
+    mutate(relativity = exp(estimate),
+           dataset = "real")
+  
+  coefs <- bind_rows(
+    coef_glm_syn,
+    coef_glm_train
+  ) %>% 
+    tidyr::separate("term", into = c("variable", "level"),
+                    sep = "(?<=[a-z])(?=[0-9]|[A-Z]|<|>|\\[)")
+  
+  coefs %>% 
+    select(variable, level, relativity, dataset)
+}
+coefs <- extract_relativities(results)
+```
+
+In Figures \ref{fig:distribution-area}, \ref{fig:distribution-bonus-malus}, and
+\ref{fig:distribution-region}, we compare distributions of select variables from 
+a synthesized sample of the TPL datasets with their distributions from the real 
+dataset. We note that, qualitatively, the synthesized distributions exhibit realistic
+patterns.
+
+```{r distribution-area, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Area variable.", fig.width=6, fig.height=2}
+make_bar(combined, "area")
+```
+
+```{r distribution-bonus-malus, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Bonus/Malus variable.", fig.width=6, fig.height=2}
+make_histogram(combined, "bonus_malus")
+```
+
+```{r distribution-region, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Region variable.", fig.width=6, fig.height=2}
+make_bar(combined, "region")
+```
+
+In terms of model relativities, we see a divergence of patterns between the synthetic
+and real datasets. In Figures  \ref{fig:relativities-area}, \ref{fig:relativities-bonus-malus}, and \ref{fig:relativities-region}, 
+we plot the 
+relativities of select variables from
+models trained during 10-fold cross-validation. We see that the trends are noticeably
+different and that the variances of the relativities resulting from models fitted
+on the synthetic datasets are larger than those resulting from models fitted on the
+corresponding folds of the real dataset.
+
+These explorations, which we recommend users perform on their datasets of interest,
+enable them to form an initial assessment on whether the workflow
+is appropriate for their use cases. For example, in our case, due to the instability
+of GLM parameters, it may not be advisable to develop a rating plan using the synthesized
+data. However, it may be appropriate to use the synthesized dataset to demonstrate 
+a procedure for developing such a plan.
+
+We note that we do not perform hyperparameter tuning of CTGAN in these experiments,
+so results could potentially be improved if dataset-specific tuning is performed.
+
+```{r relativities-area, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Area  variable across cross-validated models", fig.width=6,fig.height=2}
+coefs %>% 
+  filter(!is.na(level)) %>% 
+  filter(variable == "area") %>% 
+  ggplot(aes(x = level, y = relativity, color = dataset)) +
+  geom_boxplot() +
+  theme_bw() +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red")
+```
+
+```{r relativities-bonus-malus, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Bonus/Malus  variable across cross-validated models", fig.width=6,fig.height=2}
+coefs %>% 
+  filter(is.na(level)) %>% 
+  filter(variable == "bonus_malus") %>% 
+  ggplot(aes(y = relativity, x = level, color = dataset)) +
+  theme_bw() +
+  geom_boxplot() +
+  theme(axis.title.x=element_blank(),
+       axis.text.x=element_blank(),
+       axis.ticks.x=element_blank()) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red")
+```
+
+```{r relativities-region, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Region  variable across cross-validated models", fig.width=6,fig.height=2}
+coefs %>% 
+  filter(!is.na(level)) %>% 
+  filter(variable == "region") %>% 
+  ggplot(aes(x = level, y = relativity, color = dataset)) +
+  geom_boxplot() +
+  theme_bw() +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
 # Workflow and Privacy {#workflow}
