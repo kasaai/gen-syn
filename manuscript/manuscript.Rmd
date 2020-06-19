@@ -483,15 +483,15 @@ a synthesized sample of the TPL datasets with their distributions from the real
 dataset. We note that, qualitatively, the synthesized distributions exhibit realistic
 patterns.
 
-```{r distribution-area, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Area variable.", fig.width=6, fig.height=2}
+```{r distribution-area, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Area variable.", fig.width=6, fig.height=1.65}
 make_bar(combined, "area")
 ```
 
-```{r distribution-bonus-malus, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Bonus/Malus variable.", fig.width=6, fig.height=2}
+```{r distribution-bonus-malus, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Bonus/Malus variable.", fig.width=6, fig.height=1.65}
 make_histogram(combined, "bonus_malus")
 ```
 
-```{r distribution-region, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Region variable.", fig.width=6, fig.height=2}
+```{r distribution-region, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Distributions of the Region variable.", fig.width=6, fig.height=1.65}
 make_bar(combined, "region")
 ```
 
@@ -514,7 +514,7 @@ a procedure for developing such a plan.
 We note that we do not perform hyperparameter tuning of CTGAN in these experiments,
 so results could potentially be improved if dataset-specific tuning is performed.
 
-```{r relativities-area, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Area  variable across cross-validated models", fig.width=6,fig.height=2}
+```{r relativities-area, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Area  variable across cross-validated models", fig.width=6,fig.height=1.65}
 coefs %>% 
   filter(!is.na(level)) %>% 
   filter(variable == "area") %>% 
@@ -524,7 +524,7 @@ coefs %>%
   geom_hline(yintercept = 1, linetype = "dashed", color = "red")
 ```
 
-```{r relativities-bonus-malus, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Bonus/Malus  variable across cross-validated models", fig.width=6,fig.height=2}
+```{r relativities-bonus-malus, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Bonus/Malus  variable across cross-validated models", fig.width=6,fig.height=1.2}
 coefs %>% 
   filter(is.na(level)) %>% 
   filter(variable == "bonus_malus") %>% 
@@ -537,7 +537,7 @@ coefs %>%
   geom_hline(yintercept = 1, linetype = "dashed", color = "red")
 ```
 
-```{r relativities-region, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Region  variable across cross-validated models", fig.width=6,fig.height=2}
+```{r relativities-region, echo=FALSE, message=FALSE, warning=FALSE, fig.cap="Relativities of the Region  variable across cross-validated models", fig.width=6,fig.height=1.65}
 coefs %>% 
   filter(!is.na(level)) %>% 
   filter(variable == "region") %>% 
